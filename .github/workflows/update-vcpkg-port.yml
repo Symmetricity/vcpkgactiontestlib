@@ -40,7 +40,7 @@ jobs:
 
       - name: Update port
         id: update
-        uses: Symmetricity/update-vcpkg-port-action@v1
+        uses: Symmetricity/update-vcpkg-port-action@main
         with:
           port: ${{ env.PORT }}
           upstream-repository: ${{ env.UPSTREAM_REPOSITORY }}
