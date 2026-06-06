@@ -1,0 +1,65 @@
+name: Update vcpkg port
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Show generated diff without committing or pushing"
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  update-vcpkg:
+    runs-on: ubuntu-latest
+    env:
+      PORT: vcpkgactiontestlib
+      UPSTREAM_REPOSITORY: Symmetricity/vcpkgactiontestlib
+      TAG: v0.1.0
+    steps:
+      - name: Checkout package project
+        uses: actions/checkout@v4
+        with:
+          path: project
+
+      - name: Checkout vcpkg fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: vcpkg
+          repository: Symmetricity/vcpkg
+          token: ${{ secrets.VCPKG_PR_TOKEN }}
+
+      - name: Start from microsoft/vcpkg master
+        run: |
+          git -C vcpkg remote add upstream https://github.com/microsoft/vcpkg.git || true
+          git -C vcpkg fetch upstream master
+          git -C vcpkg switch -C "update/${PORT}-${TAG}-${GITHUB_RUN_NUMBER}" upstream/master
+
+      - name: Update port
+        id: update
+        uses: Symmetricity/update-vcpkg-port-action@v1
+        with:
+          port: ${{ env.PORT }}
+          upstream-repository: ${{ env.UPSTREAM_REPOSITORY }}
+          tag: ${{ env.TAG }}
+          vcpkg-root: vcpkg
+          template-dir: project/.vcpkg-port-template
+          dry-run: ${{ inputs.dry_run }}
+
+      - name: Commit and push branch
+        if: ${{ steps.update.outputs.changed == 'true' && !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.update.outputs.version }}
+          PORT_PATH: ${{ steps.update.outputs.port-relative-path }}
+          VERSION_PATH: ${{ steps.update.outputs.version-relative-path }}
+        run: |
+          git -C vcpkg config user.name "github-actions[bot]"
+          git -C vcpkg config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C vcpkg add "${PORT_PATH}" "versions/baseline.json" "${VERSION_PATH}"
+          git -C vcpkg commit \
+            -m "[${PORT}] Update to ${VERSION}" \
+            -m "Co-authored-by: Codex <noreply@openai.com>"
+          git -C vcpkg push origin "HEAD:update/${PORT}-${TAG}-${GITHUB_RUN_NUMBER}"
